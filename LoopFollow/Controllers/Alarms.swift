@@ -509,9 +509,21 @@ extension MainViewController {
             }
         }
 
+        if UserDefaultsRepository.alertRecBolusActive.value && !UserDefaultsRepository.alertRecBolusIsSnoozed.value {
+            let currentRecBolus = UserDefaultsRepository.deviceRecBolus.value
+            let alertAtRecBolus = Double(UserDefaultsRepository.alertRecBolusLevel.value)
+
+            if currentRecBolus >= alertAtRecBolus {
+                AlarmSound.whichAlarm = "Rec. Bolus"
+
+                if UserDefaultsRepository.alertRecBolusRepeat.value { numLoops = -1 }
+                triggerAlarm(sound: UserDefaultsRepository.alertRecBolusSound.value, snooozedBGReadingTime: nil, overrideVolume: UserDefaultsRepository.overrideSystemOutputVolume.value, numLoops: numLoops, snoozeTime: UserDefaultsRepository.alertRecBolusSnooze.value, snoozeIncrement: 5, audio: true)
+                return
+            }
+        }
+
         // still send persistent notification if no alarms trigger and persistent notification is on
         persistentNotification(bgTime: currentBGTime)
-        
     }
        
     func checkOverrideAlarms()
@@ -773,7 +785,14 @@ extension MainViewController {
             alarms.reloadSnoozeTime(key: "alertBatterySnoozedTime", setNil: true)
             alarms.reloadIsSnoozed(key: "alertBatteryIsSnoozed", value: false)
         }
-      }
+
+        if date > UserDefaultsRepository.alertRecBolusSnoozedTime.value ?? date {
+            UserDefaultsRepository.alertRecBolusSnoozedTime.setNil(key: "alertRecBolusSnoozedTime")
+            UserDefaultsRepository.alertRecBolusIsSnoozed.value = false
+            alarms.reloadSnoozeTime(key: "alertRecBolusSnoozedTime", setNil: true)
+            alarms.reloadIsSnoozed(key: "alertRecBolusIsSnoozed", value: false)
+        }
+    }
     
     func checkQuietHours() {
         if UserDefaultsRepository.quietHourStart.value == nil || UserDefaultsRepository.quietHourEnd.value == nil { return }
@@ -1007,21 +1026,21 @@ extension MainViewController {
         let texts = AnnouncementTexts.forLanguage(preferredLanguage)
         
         let negligibleThreshold = 3
-        let absoluteDifference = bgUnits.toDisplayUnits(String(abs(bloodGlucoseDifference)))
+        let localizedCurrentValue = bgUnits.toDisplayUnits(String(currentValue)).replacingOccurrences(of: ",", with: ".")
         let announcementText: String
         
         if abs(bloodGlucoseDifference) <= negligibleThreshold {
-            announcementText = "\(texts.currentBGIs) \(bgUnits.toDisplayUnits(String(currentValue))) \(texts.stable)"
+            announcementText = "\(texts.currentBGIs) \(localizedCurrentValue) \(texts.stable)"
         } else {
             let directionText = bloodGlucoseDifference < 0 ? texts.decrease : texts.increase
-            announcementText = "\(texts.currentBGIs) \(bgUnits.toDisplayUnits(String(currentValue))) \(directionText) \(absoluteDifference)"
+            let absoluteDifference = bgUnits.toDisplayUnits(String(abs(bloodGlucoseDifference))).replacingOccurrences(of: ",", with: ".")
+            announcementText = "\(texts.currentBGIs) \(localizedCurrentValue) \(directionText) \(absoluteDifference)"
         }
         
         let speechUtterance = AVSpeechUtterance(string: announcementText)
         speechUtterance.voice = AVSpeechSynthesisVoice(language: voiceLanguageCode)
         
         speechSynthesizer.speak(speechUtterance)
-
     }
     
     func isOnPhoneCall() -> Bool {
